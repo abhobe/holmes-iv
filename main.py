@@ -255,8 +255,8 @@ async def initialize_session(openai_ws):
 
 if __name__ == "__main__":
     import uvicorn
-    from pyngrok import ngrok
     if os.getenv('USE_NGROK') == 'true':
+        from pyngrok import ngrok
         public_url = ngrok.connect(PORT, bind_tls=True).public_url
     else:
         PORT = 80
