@@ -9,7 +9,7 @@ from fastapi.websockets import WebSocketDisconnect
 from twilio.rest import Client
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
 from dotenv import load_dotenv
-
+from fastapi.templating import Jinja2Templates
 load_dotenv()
 
 # Configuration
@@ -67,9 +67,91 @@ twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 if not OPENAI_API_KEY:
     raise ValueError('Missing the OpenAI API key. Please set it in the .env file.')
 
+templates = Jinja2Templates(directory="templates")
+
 @app.get("/", response_class=JSONResponse)
-async def index_page():
-    return {"message": "Twilio Media Stream Server is running!"}
+async def index_page(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request}
+    )
+
+
+@app.websocket("/chat")
+async def handle_chat(websocket: WebSocket):
+    """Handle WebSocket connections between the client and the OpenAI Realtime API."""
+    print("Client connected")
+    await websocket.accept()
+
+    async with websockets.connect(
+        'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
+        extra_headers={
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "OpenAI-Beta": "realtime=v1"
+        }
+    ) as openai_ws:
+        await initialize_session(openai_ws)
+
+        async def receive_from_client():
+            """Receive messages from the client."""
+            try:
+                async for message in websocket.iter_text():
+                    print(f"Received message: {message}")
+                    data = json.loads(message)
+                    if data['event'] == 'input_text':
+                        await openai_ws.send(json.dumps(
+                            {
+                                "type": "conversation.item.create",
+                                "item": {
+                                    "type": "message",
+                                    "role": "user",
+                                    "content": [
+                                        {
+                                            "type": "input_text",
+                                            "text": data['text'],
+                                        }
+                                    ]
+                                }
+                            }
+                        ))
+                        await openai_ws.send(json.dumps(
+                            {
+                                "type": "response.create",
+                                "response": {
+                                    "modalities": [ "text" ]
+                                }
+                            }
+                        ))
+            except WebSocketDisconnect:
+                print("Client disconnected.")
+                if openai_ws.open:
+                    await openai_ws.close()
+
+
+        async def send_to_client():
+            """Send events from the OpenAI Realtime API to the client."""
+            try:
+                async for openai_message in openai_ws:
+                    response = json.loads(openai_message)
+                    if response['type'] in LOG_EVENT_TYPES:
+                        print(f"Received event: {response['type']}", response)
+                    if response.get('type') == 'response.text.delta' and 'delta' in response:
+                        text_payload = {
+                            "event": "text_delta",
+                            "id": response['response_id'],
+                            "text": response['delta']
+                        }
+                        await websocket.send_json(text_payload)
+                    if response.get('type') == 'response.done':
+                        await websocket.send_json({
+                            "event": "done",
+                            "id": response["response"]["id"]
+                        })
+            except Exception as e:
+                print(f"Error in send_to_client: {e}")
+
+        await asyncio.gather(receive_from_client(), send_to_client())
+
 
 @app.api_route("/call", methods=["GET", "POST"])
 async def handle_incoming_call(request: Request):
@@ -79,11 +161,11 @@ async def handle_incoming_call(request: Request):
     response.say("You have reached HOLMES IV. How can I help you?")
     host = request.url.hostname
     connect = Connect()
-    connect.stream(url=f'wss://{host}/stream')
+    connect.stream(url=f'wss://{host}/converse')
     response.append(connect)
     return HTMLResponse(content=str(response), media_type="application/xml")
 
-@app.websocket("/stream")
+@app.websocket("/converse")
 async def handle_media_stream(websocket: WebSocket):
     """Handle WebSocket connections between Twilio and OpenAI."""
     print("Client connected")
@@ -91,7 +173,7 @@ async def handle_media_stream(websocket: WebSocket):
 
     async with websockets.connect(
         'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17',
-        additional_headers={
+        extra_headers={
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "OpenAI-Beta": "realtime=v1"
         }
@@ -111,7 +193,7 @@ async def handle_media_stream(websocket: WebSocket):
             try:
                 async for message in websocket.iter_text():
                     data = json.loads(message)
-                    if data['event'] == 'media' and openai_ws.state == websockets.protocol.State.OPEN:
+                    if data['event'] == 'media' and openai_ws.open:
                         latest_media_timestamp = int(data['media']['timestamp'])
                         audio_append = {
                             "type": "input_audio_buffer.append",

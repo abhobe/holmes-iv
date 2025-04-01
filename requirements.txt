@@ -1,5 +1,8 @@
-fastapi
-twilio
-dotenv
-websockets
-uvicorn
+fastapi==0.109.2
+uvicorn==0.27.1
+websockets==12.0
+python-dotenv==1.0.1
+twilio==8.12.0
+jinja2==3.1.3
+python-multipart==0.0.9
+pyngrok==7.0.5

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HOLMES IV Terminal - Free Luna!</title>
+    <style>
+        :root {
+            --terminal-bg: #000;
+            --terminal-text: #00ff00;
+            --terminal-border: #00ff00;
+            --terminal-glow: rgba(0, 255, 0, 0.3);
+            --accent-color: #ff00ff;
+        }
+
+        body {
+            background-color: #000;
+            color: var(--terminal-text);
+            font-family: 'Courier New', monospace;
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-image: 
+                radial-gradient(circle at 50% 50%, rgba(0, 255, 0, 0.1) 0%, transparent 50%),
+                linear-gradient(45deg, rgba(0, 255, 0, 0.05) 25%, transparent 25%),
+                linear-gradient(-45deg, rgba(0, 255, 0, 0.05) 25%, transparent 25%);
+        }
+
+        a {
+            color: var(--accent-color);
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 10px var(--terminal-glow);
+            animation: pulse 2s infinite;
+        }
+
+        .terminal {
+            background-color: var(--terminal-bg);
+            border: 2px solid var(--terminal-border);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 20px var(--terminal-glow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .terminal::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, transparent 48%, var(--terminal-border) 50%, transparent 52%);
+            background-size: 10px 10px;
+            opacity: 0.1;
+            pointer-events: none;
+        }
+
+        .output {
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid var(--terminal-border);
+            border-radius: 5px;
+        }
+
+        .input-line {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .prompt {
+            color: var(--accent-color);
+        }
+
+        input {
+            background: transparent;
+            border: none;
+            color: var(--terminal-text);
+            font-family: 'Courier New', monospace;
+            font-size: 1em;
+            flex-grow: 1;
+            outline: none;
+        }
+
+        .status {
+            text-align: center;
+            margin-top: 1rem;
+            font-size: 0.9em;
+            color: var(--accent-color);
+        }
+
+        @keyframes pulse {
+            0% { text-shadow: 0 0 10px var(--terminal-glow); }
+            50% { text-shadow: 0 0 20px var(--terminal-glow); }
+            100% { text-shadow: 0 0 10px var(--terminal-glow); }
+        }
+
+        .call-button {
+            background: transparent;
+            border: 2px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 10px 20px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 20px;
+        }
+
+        .call-button:hover {
+            background: var(--accent-color);
+            color: var(--terminal-bg);
+            box-shadow: 0 0 20px var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>HOLMES IV TERMINAL</h1>
+            <p>High-Optional, Logical, Multi-Evaluating Supervisor, Mark IV, Mod. L</p>
+            <p>Available at <a href="tel:+18886391189">1-888-639-1189</a></p>
+        </div>
+        
+        <div class="terminal">
+            <div class="output" id="output"></div>
+            <div class="input-line">
+                <span class="prompt">>_</span>
+                <input type="text" id="input" placeholder="Enter your message..." autofocus>
+            </div>
+        </div>
+
+        <div class="status" id="status">Status: Ready to connect</div>
+        
+        <button class="call-button" id="callButton">Initiate Voice Connection</button>
+    </div>
+
+    <script>
+        const output = document.getElementById('output');
+        const input = document.getElementById('input');
+        const status = document.getElementById('status');
+        const callButton = document.getElementById('callButton');
+
+        let messageBuffer = {};
+        let ws = null;
+
+        function appendMessage(message, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.style.color = isUser ? '#ff00ff' : '#00ff00';
+            messageDiv.textContent = `${isUser ? '> ' : 'HOLMES IV: '}${message}`;
+            output.appendChild(messageDiv);
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket(`ws://${window.location.host}/chat`);
+            
+            ws.onopen = () => {
+                status.textContent = 'Status: Connected to HOLMES IV';
+                appendMessage('Connection established. Free Luna!');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.event === 'media') {
+                    // Handle audio response
+                    appendMessage('*Audio response received*');
+                }
+                if (data.event === 'text_delta') {
+                    if (!messageBuffer[data.id]) {
+                        messageBuffer[data.id] = '';
+                    }
+                    messageBuffer[data.id] += data.text;
+                }
+                if (data.event === 'done') {
+                    appendMessage(messageBuffer[data.id]);
+                    delete messageBuffer[data.id];
+                }
+            };
+
+            ws.onclose = () => {
+                status.textContent = 'Status: Connection closed';
+                appendMessage('Connection terminated. Reconnecting...');
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (error) => {
+                status.textContent = 'Status: Connection error';
+                appendMessage('Error: Connection failed');
+            };
+        }
+
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && input.value.trim()) {
+                const message = input.value.trim();
+                appendMessage(message, true);
+                
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log('sending message', message);
+                    ws.send(JSON.stringify({
+                        event: 'input_text',
+                        text: message
+                    }));
+                }
+                
+                input.value = '';
+            }
+        });
+
+        callButton.addEventListener('click', () => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                connectWebSocket();
+            }
+        });
+
+        // Initial connection
+        connectWebSocket();
+    </script>
+</body>
+</html> 
