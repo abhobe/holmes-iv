@@ -170,7 +170,7 @@
         }
 
         function connectWebSocket() {
-            ws = new WebSocket(`ws://${window.location.host}/chat`);
+            ws = new WebSocket(`wss://${window.location.host}/chat`);
             
             ws.onopen = () => {
                 status.textContent = 'Status: Connected to HOLMES IV';
